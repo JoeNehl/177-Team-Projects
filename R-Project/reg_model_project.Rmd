@@ -1,0 +1,297 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(leaps)
+library(grid)
+library(gridExtra)
+library(GGally)
+```
+
+### Load data
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+The data were derived from an observational study with 651 randomly sampled movies produced and released before 2016. This is a relatively small sample and not experimental, therefore, we can not use the data to show a causal connection between variables. However, the sample was obtained randomly so our statitical analysis results should be able to generalize to the targeted population with caution.
+
+* * *
+
+## Part 2: Research question
+
+The research question here is whether a subset of variables from the dataset can be used to predict the popularity (audience score) of a particular movie. The popularity is one of important factors in decision making for any movie fan before watching a movie. It is also critical for companies that have a business related to movies (to be able to make money or lose a lot).
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+Before building a prediction model, we need to identify a subset of variables from the dataset for our multiple linear regression model. The response variable is audience_score, and explanatory variables should be a subset of variable that might affect the response variable.
+
+We first remove some variables which are not feasible to serve as our explanatory variables such as URL, title, director and actor 1-5; we also noted that critics_rating and critics_score are from the same source. We only need to keep one of them.
+```{r}
+dfm <- movies[ -c(1:2, 5:12, 14:15, 24:32)]
+dfm <- na.omit(dfm)
+#Show a list of possible variables included for modeling 
+str(dfm)
+
+```
+Looking at histogram and summary of audience_score, imdb_rating, and critics_score will help us to understand distributions of the three grading system results for movies in our dataset.
+```{r}
+hist(dfm$audience_score)
+hist(dfm$imdb_rating)
+hist(dfm$critics_score)
+```
+
+```{r}
+summary(dfm$audience_score)
+summary(dfm$imdb_rating)
+summary(dfm$critics_score)
+```
+
+All three variable distributions exhibit unique characteristics. 
+
+Next we would like to check pairwise correlations from our list of possible variables included for modeling, and the first group includes all soring/rating variables:
+
+```{r}
+ggpairs(dfm, columns= 3:6)
+```
+
+We can visually observe that strong and unique correlations exist between audience_score and other three variables respectively. We also see that two predictors imdb_rating and critics_score may have collinearity issue since they are highly correlated. We decided to keep all three variables and plan to pay special attention to this collinearity issue during modeling stage.
+
+```{r}
+ggpairs(dfm, columns= 6:11)
+```
+
+This second group includes all awards related variables. Current year's Oscar nominations are usually announced at the end of January of coming year. From the above plot, we can see audience_score are higher for variables best_pic_nom and best_pic_win; audience_score are little higher in average for variables best_actress_win and best_dir_win; variable best_actor_win has no impact on audience_score. If we want to have a prediction model for a new movie in current year then these awards information will not be available hence they will not be affecting audience score. We decide to build a model that is useful all the time, which means not to include awards related variables in our list of predictors.
+
+```{r}
+ggplot(dfm, aes(x=factor(genre), y=audience_score))+
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+It is very interesting to see the relationship between audience_score and genre: animation, documentary, and musical & performing arts are getting higher audience_scores. We want to keep genre in our list of explanatory variables.
+
+Take a closer look into runtime and audience_score relationship. 
+
+```{r}
+ggplot(dfm, aes(x=runtime, y=audience_score))+
+  geom_point()+ stat_smooth(method=lm, level=0.95)
+```
+
+The above plot shows a positive weak liner relationship. Therefore, we decide to remove "runtime" from our list of explanatory variables.
+
+```{r}
+dfm2 <- dfm[ -c(2, 7:11)]
+#Here is our final list of variables included in the modeling
+names(dfm2)
+```
+
+
+* * *
+
+## Part 4: Modeling
+
+To obtain more reliable predictions on movies we are going to use adjusted R_ squared approach. We are using Backward Elimination selection method since the number of predictors are not very large. The strategy starts with the model that includes all potential predictors. Variables are eliminated one at a time towards largest improvement in adjusted R_squared.
+
+```{r}
+m_full <- lm(audience_score ~  genre + imdb_rating + critics_score + audience_rating, data = dfm2)
+summary(m_full)
+```
+
+**Interpretation of model coefficients**
+
+*audience_rating:* The model predicts a 20.18153 increase in the audience_score when its value is Upright, otherwise zero;
+
+*critics_score:* The model predicts a 0.02417 increase in the audience_score for each additional score point in critics_score;
+
+*imdb_rating:* The model predicts a 9.38645 increase in the audience_score for each additional score point in imdb_rating;
+
+*genre:* For a difference value of genre, the model increase or dicrease the audience_score; for example, for Animation, the model predicts a 3.41938 increase in the audience_score, for Drama,  the model predicts a 1.00683 decrease in the audience_score.
+
+Let's start our first round of variable elimination procedure towards largest improvement in adjusted R_squared:
+
+```{r eliminating audience_rating }
+m_1_noAR <- lm(audience_score ~  genre + imdb_rating + critics_score, data = dfm2)
+summary(m_1_noAR)$adj.r.squared
+```
+
+This is not an improvement comparing with Adjusted R-squared 0.8853 in m_full.
+
+```{r eliminating critics_score}
+m_1_noCS <- lm(audience_score ~  genre + imdb_rating + audience_rating, data = dfm2)
+summary(m_1_noCS)$adj.r.squared
+```
+
+This is pretty close bu still not an improvement comparing with Adjusted R-squared 0.8853 in m_full. 
+
+```{r eliminating imdb_rating}
+m_1_noIR <- lm(audience_score ~  genre + critics_score + audience_rating, data = dfm2)
+summary(m_1_noIR)$adj.r.squared
+```
+
+This is not an improvement comparing with Adjusted R-squared 0.8853 in m_full.
+
+```{r eliminating genre}
+m_1_noGE <- lm(audience_score ~ imdb_rating + critics_score + audience_rating, data = dfm2)
+summary(m_1_noGE)$adj.r.squared
+```
+This is not an improvement comparing with Adjusted R-squared 0.8853 in m_full.
+
+**Disscussion**
+
+There is no improvement on adjusted R_squared after elimination of a variable, therefore, we are going to use the full model m_full as our predictive model.
+
+***Model diagnositics***
+
+To validate our multiple linear regression model m_full, diagnostic plots will be used to check the following four assumptions:
+
+1. the residuals of the model are nearly normal,
+2. the variability of the residuals is nearly constant,
+3. the residuals are independent, and 
+4. each variable is linearly related to the outcome
+
+(1) Check Normal probability 
+
+```{r}
+qqnorm(m_full$residuals, main="Normality Condition")
+qqline(m_full$residuals, main="Normality Condition")
+```
+
+**Disscussion**
+While the plot exhibits some minor iregularities, there are no apparent outliers that might be cause for concern.
+
+```{r}
+hist(m_full$residuals, prob=TRUE, main="Normality Condition")
+```
+
+**Discussion**
+
+The histogram confirms the right skewness but the distribution is nearly normal.
+
+
+(2) Check Variability of the residuals
+
+```{r}
+ggplot(data = m_full, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(m_full$fitted.values, m_full$residuals)
+plot(m_full$fitted.values, abs(m_full$residuals))
+```
+
+**Disscussion**
+
+These plots are helpful to check out the condition that the variance of the residuals is approximately constant.
+
+
+(3) Check for independency
+
+
+```{r}
+plot(m_full$residuals, main="Independency Conditions")
+```
+
+**Discussion**
+
+Condition met -- the plot shows residuals being randomly scattered around zero.
+
+```{r}
+anova(m_full)
+```
+The above anova result shows that all explanatory varibles are considered significant predictors based on their P-values.
+
+
+(4) Check linearity: residuals agaist each predictor variable
+
+```{r}
+plot(m_full$residuals ~ dfm2$imdb_rating, main="Linearity Condition - imdb")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm2$genre, main="Linearity Condition - genre")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm2$audience_rating, main="Linearity Condition - audienceR")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm2$critics_score, main="Linearity Condition - criticsS")
+```
+
+**Discussion**
+
+The above plots show either a complete radom scatter around zero or very little pattern variability. Condition met.
+
+* * *
+
+## Part 5: Prediction
+
+We are going to use our model to predict the audience score for the movie "The Jungle Book" which was released in April 2016. The values for the predictors were obtained from the sources mentioned in the codebook: IMDb and Rotten Tomatoes; and from common sense. Based on the information from IMDb and Rotten Tomtoes, the movie's genre should be "Other", but we believe it should be "Animation" since it is animated indeed. We will make two predicitions using two different genre values.
+
+```{r}
+genre <- "Animation"
+imdb_rating <- 7.5
+critics_score <- 95
+audience_rating <- "Upright"
+audience_score <- 86
+TestA <- data.frame (genre, imdb_rating, critics_score, audience_rating, audience_score)
+```
+
+
+```{r}
+prediction_JBA <- predict(m_full, newdata=TestA, interval="confidence")
+prediction_JBA
+```
+```{r}
+myPrediction <- round(predict(m_full, TestA), digits = 0)
+c(myPrediction, TestA$audience_score) #compare fitted and observed values
+```
+**Discussion**
+The predicted audience_score is very close to real audience_score. The observed audience_score value 86 is captured in the 95% confidence interval.
+```{r}
+genre <- "Other"
+TestO <- data.frame (genre, imdb_rating, critics_score, audience_rating, audience_score)
+```
+
+```{r}
+prediction_JBO <- predict(m_full, newdata=TestO, interval="confidence")
+prediction_JBO
+```
+```{r}
+myPrediction <- round(predict(m_full, TestO), digits = 0)
+c(myPrediction, TestO$audience_score) #compare fitted and observed values
+```
+**Discussion**
+The predicted audience_score is not as close as before to the real audience_score due to the value change of genre to "Other". The observed audience_score value 86 is not captured in the 95% confidence interval.
+
+* * *
+
+## Part 6: Conclusion
+
+Explanatory data analysis was of great value in obtaining the insight on which data variable to be included in the model. The predictive model resulted from this project may be used to predict audience scores for a movie. However, the accuracy of the predictive model is limited. The reasons for such limitation could be: (a) the sample size in our dataset is relatively small and the dataset contians primarily by drama movies; (b) some genre values are not inclded which make some movies hard to predict by just using "Other" as a value.

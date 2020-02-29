@@ -1,0 +1,144 @@
+---
+title: "R_MiniProject"
+output: html_document
+---
+First thing that must happen before anything is loading the libraries that will be used in this report.
+
+```{r load-packages, message = FALSE}
+library(dplyr)
+library(ggplot2)
+library(statsr)
+library(leaps)
+library(grid)
+library(gridExtra)
+library(GGally)
+load("movies.Rdata")
+```
+
+The data set chosen to examine in this project is a combination of genre, rating, release year and release month. The goal is to predict the audience score from these data points. This set of data was chosen to see if the summer big hits per year as well as the movie ratings are sufficcient to predict how the audience will recieve the movie.
+
+```{r}
+dfm <- movies[ -c(1:2, 4, 6, 9:17, 19:32)]
+dfm <- na.omit(dfm)
+str(dfm)
+
+```
+
+```{r}
+hist(dfm$audience_score)
+summary(dfm$audience_score)
+```
+
+The following is list of comparisons between the different sources of data to be used in the project
+
+```{r}
+ggpairs(dfm, columns= 1:5)
+```
+
+```{r}
+ggplot(dfm, aes(x=thtr_rel_month, y=audience_score))+
+  geom_point()+ stat_smooth(method=lm, level=0.95)
+```
+
+```{r}
+ggplot(dfm, aes(x=thtr_rel_year, y=audience_score))+
+  geom_point()+ stat_smooth(method=lm, level=0.95)
+```
+
+```{r}
+ggplot(dfm, aes(x=genre, y=audience_score))+
+  geom_point()+ stat_smooth(method=lm, level=0.95)
+```
+
+```{r}
+ggplot(dfm, aes(x=mpaa_rating, y=audience_score))+
+  geom_point()+ stat_smooth(method=lm, level=0.95)
+```
+
+```{r}
+m_full <- lm(audience_score ~  thtr_rel_month + thtr_rel_year + mpaa_rating + genre, data = dfm)
+summary(m_full)
+```
+
+```{r eliminating thtr_rel_month }
+m_1_noAR <- lm(audience_score ~  thtr_rel_year + mpaa_rating + genre, data = dfm)
+summary(m_1_noAR)$adj.r.squared
+```
+
+```{r eliminating thtr_rel_year }
+m_1_noAR <- lm(audience_score ~  thtr_rel_month + mpaa_rating + genre, data = dfm)
+summary(m_1_noAR)$adj.r.squared
+```
+
+
+```{r eliminating mpaa_rating }
+m_1_noAR <- lm(audience_score ~  thtr_rel_month + thtr_rel_year + genre, data = dfm)
+summary(m_1_noAR)$adj.r.squared
+```
+
+```{r eliminating genre }
+m_1_noAR <- lm(audience_score ~  thtr_rel_month + thtr_rel_year + mpaa_rating, data = dfm)
+summary(m_1_noAR)$adj.r.squared
+```
+
+```{r}
+qqnorm(m_full$residuals, main="Normality Condition")
+qqline(m_full$residuals, main="Normality Condition")
+```
+
+```{r}
+hist(m_full$residuals, prob=TRUE, main="Normality Condition")
+```
+
+
+```{r}
+ggplot(data = m_full, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+```{r}
+par(mfrow = c(1, 2))
+plot(m_full$fitted.values, m_full$residuals)
+plot(m_full$fitted.values, abs(m_full$residuals))
+```
+
+
+```{r}
+plot(m_full$residuals ~ dfm$thtr_rel_year, main="Linearity Condition - imdb")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm$genre, main="Linearity Condition - genre")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm$thtr_rel_month, main="Linearity Condition - audienceR")
+```
+
+```{r}
+plot(m_full$residuals ~ dfm$mpaa_rating, main="Linearity Condition - criticsS")
+```
+
+```{r}
+genre <- "Animation"
+thtr_rel_month <- 4
+thtr_rel_year <- 2016
+mpaa_rating <- "PG"
+audience_score <- 86
+TestA <- data.frame (genre, thtr_rel_month, thtr_rel_year, mpaa_rating, audience_score)
+```
+
+```{r}
+prediction_JBA <- predict(m_full, newdata=TestA, interval="confidence")
+prediction_JBA
+
+```
+```{r}
+myPrediction <- round(predict(m_full, TestA), digits = 0)
+c(myPrediction, TestA$audience_score) #compare fitted and observed values
+```
+
+In conclution, these variables are not sufficient enough to predict the outcome of audience_score 
